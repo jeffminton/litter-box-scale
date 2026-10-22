@@ -17,6 +17,8 @@ private:
     Publisher publisher;
 
     Message message;
+
+    char* host_name;
     
 
     
@@ -24,6 +26,8 @@ public:
     GelfLogger();
 
     // void log_to_gelf(const char* short_message);
+
+    void set_hostname(char* host_name);
 
     size_t write(uint8_t) override;
     size_t write(const uint8_t* buffer, size_t size) override;

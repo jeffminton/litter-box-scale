@@ -56,10 +56,12 @@ HX711 scale;
 // The transport can be either UDP, TCP, HTTP, etc (right now UDP only is implemented)
 // It takes an IP address or a host name
 
-char* graylog_address= GRAYLOG_ADDRESS;
+const char* graylog_address = GRAYLOG_ADDRESS;
+
+char* graylog_address_modified = const_cast<char*>(graylog_address);
 
 // UDPTransport transport = UDPTransport("log.mysite.net", 12201);
-UDPTransport transport = UDPTransport(graylog_address, 12201);
+UDPTransport transport = UDPTransport(graylog_address_modified, 12201);
 Publisher publisher = Publisher(&transport);
 
 // We will use this just to avoid creating many messages in our functions
@@ -88,10 +90,14 @@ LoadSensorStabilizer sensor(steady_weight_count_required, steady_weight_toleranc
 
 
 int log_to_gelf(const char* short_message) {
+    Serial.printf("log_to_gelf write Start\n");
     message.reset(short_message);
     message.set("host", host_name);
     message.set("millis", millis());
+    Serial.printf("log_to_gelf write Before Publish host_name: %s, message: %s\n", host_name, short_message);
     publisher.publish(&message);
+    Serial.printf("log_to_gelf write After Publish\n");
+    Serial.printf("log_to_gelf write Done\n");
     return 0;
 }
 
@@ -209,6 +215,8 @@ void setup() {
 
     host_name = get_host_name();
 
+    GraylogLogger.set_hostname(host_name);
+
     scale.begin(DOUT, CLK);
     scale.set_scale(calibration_factor); //This value is obtained by using the SparkFun_HX711_Calibration sketch
     scale.tare(); //Assuming there is no weight on the scale at start up, reset the scale to 0
@@ -240,6 +248,7 @@ void setup() {
     Serial.println("Start");
     WebSerial.println("Start");
     GraylogLogger.println("Start");
+    log_to_gelf("Start Local Function");
 
     start_time = millis();
 }
@@ -257,7 +266,7 @@ void loop() {
     sample_counter++;
 
     if( sensor.isSteady() == true ) {
-        GraylogLogger.printf("Steady Weight: %.3f lbs", current_weight);
+        // GraylogLogger.printf("Steady Weight: %.3f lbs", current_weight);
         pet_weight.process_recorded_weight(current_weight);
     }
 

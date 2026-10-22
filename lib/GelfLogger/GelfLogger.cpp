@@ -1,7 +1,7 @@
 #include "GelfLogger.h"
 
 
-GelfLogger::GelfLogger() :  graylog_address(GRAYLOG_ADDRESS), transport(UDPTransport(graylog_address, 12201)),  publisher(Publisher(&transport)), message(Message("")){
+GelfLogger::GelfLogger() :  graylog_address(const_cast<char*>(GRAYLOG_ADDRESS)), transport(UDPTransport(graylog_address, 12201)),  publisher(Publisher(&transport)), message(Message("")){
     // graylog_address = GRAYLOG_ADDRESS;
 
     // transport = UDPTransport(graylog_address, 12201);
@@ -27,6 +27,7 @@ size_t GelfLogger::write(uint8_t m) {
 
 // Println / Printf / Write func
 size_t GelfLogger::write(const uint8_t* buffer, size_t size) {
+  Serial.printf("GelfLogger write Start\n");
   if (buffer == nullptr || size == 0)
     return 0;
 
@@ -36,11 +37,19 @@ size_t GelfLogger::write(const uint8_t* buffer, size_t size) {
 
   const char* message_text = null_terminated_buffer;
   message.reset(message_text);
+  message.set("host", host_name);
   message.set("millis", millis());
+  Serial.printf("GelfLogger write Before Publish host_name: %s, message: %s\n", host_name, message_text);
   publisher.publish(&message);
+  Serial.printf("GelfLogger write After Publish\n");
 
   delete[] null_terminated_buffer;
+  Serial.printf("GelfLogger write Done\n");
   return size;
+}
+
+void GelfLogger::set_hostname(char* host_name_in) {
+  host_name = host_name_in;
 }
 
 GelfLogger GraylogLogger;
