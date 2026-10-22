@@ -8,3 +8,6 @@
 .DS_Store
 
 secrets.ini
+secrets.h
+
+data/

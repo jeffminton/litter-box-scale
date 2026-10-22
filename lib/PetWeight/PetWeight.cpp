@@ -40,6 +40,7 @@ int PetWeight::update_weight(int index, float weight) {
 
     Serial.printf("update_weight: current_index: %d\n", current_index);
     WebSerial.printf("update_weight: current_index: %d\n", current_index);
+    GraylogLogger.printf("update_weight: current_index: %d\n", current_index);
 
     time(&now);                       // read the current time
     localtime_r(&now, &tm);
@@ -51,8 +52,8 @@ int PetWeight::update_weight(int index, float weight) {
     Serial.printf("update_weight: set weight: %.3f\n", weight);
     WebSerial.printf("update_weight: set weight: %.3f\n", weight);
     pet_weights[index].weight[current_index] = weight;
-    Serial.printf("update_weight: set timestamp: %d\n", now);
-    WebSerial.printf("update_weight: set timestamp: %d\n", now);
+    Serial.printf("update_weight: set timestamp: %lld\n", (long long)now);
+    WebSerial.printf("update_weight: set timestamp: %lld\n", (long long)now);
     pet_weights[index].timestamp[current_index] = now;
     Serial.printf("update_weight: set current_index: %d\n", current_index);
     WebSerial.printf("update_weight: set current_index: %d\n", current_index);
@@ -66,7 +67,7 @@ int PetWeight::update_weight(int index, float weight) {
 }
 
 
-int PetWeight::get_pet_current_weight(int index) {
+float PetWeight::get_pet_current_weight(int index) {
     int current_index;
     current_index = pet_weights[index].current_index;
 
@@ -118,8 +119,8 @@ int PetWeight::get_matching_pet_index(float weight) {
 
 void PetWeight::log_all_pet_weights_string(){
     for(int i = 0; i < pet_weights_length; i++) {
-        Serial.printf("%s: %.2f\n", pet_weights[i].name, get_pet_current_weight(i));
-        WebSerial.printf("%s: %.2f\n", pet_weights[i].name, get_pet_current_weight(i));
+        Serial.printf("%s: %.2f\n", pet_weights[i].name.c_str(), get_pet_current_weight(i));
+        WebSerial.printf("%s: %.2f\n", pet_weights[i].name.c_str(), get_pet_current_weight(i));
     }
 }
 
@@ -135,21 +136,22 @@ void PetWeight::process_recorded_weight(float current_weight) {
     }
 
     if ( current_weight > (previous_weight + weight_changed_threshold) || current_weight < (previous_weight - weight_changed_threshold) ) {
-        Serial.printf("Steady Value: count: %d, millis: %d %.3f, %.3f lbs\n", sample_counter, millis() - start_time, previous_weight, current_weight);
-        WebSerial.printf("Steady Value: count: %d, millis: %d %.3f, %.3f lbs\n", sample_counter, millis() - start_time, previous_weight, current_weight);
+        Serial.printf("Steady Value: count: %d, millis: %lu %.3f, %.3f lbs\n", sample_counter, millis() - start_time, previous_weight, current_weight);
+        WebSerial.printf("Steady Value: count: %d, millis: %lu %.3f, %.3f lbs\n", sample_counter, millis() - start_time, previous_weight, current_weight);
+        GraylogLogger.printf("Steady Value: count: %d, millis: %lu %.3f, %.3f lbs\n", sample_counter, millis() - start_time, previous_weight, current_weight);
 
         previous_weight = current_weight;
         if( current_weight > pet_weight_in_box) {
             pet_weight_in_box = current_weight;
             pet_arrival_time = millis();
-            Serial.printf("pet_arrival_time: %d, pet_weight_in_box: %.3f\n", pet_arrival_time / 1000, pet_weight_in_box);
-            WebSerial.printf("pet_arrival_time: %d, pet_weight_in_box: %.3f\n", pet_arrival_time / 1000, pet_weight_in_box);
+            Serial.printf("pet_arrival_time: %lu, pet_weight_in_box: %.3f\n", pet_arrival_time / 1000, pet_weight_in_box);
+            WebSerial.printf("pet_arrival_time: %lu, pet_weight_in_box: %.3f\n", pet_arrival_time / 1000, pet_weight_in_box);
             pet_in_box = true;
         } else {
             weight_after_pet = current_weight;
             pet_depart_time = millis();
-            Serial.printf("pet_depart_time: %d, weight_after_pet: %.3f\n", pet_depart_time / 1000, weight_after_pet);
-            WebSerial.printf("pet_depart_time: %d, weight_after_pet: %.3f\n", pet_depart_time / 1000, weight_after_pet);
+            Serial.printf("pet_depart_time: %lu, weight_after_pet: %.3f\n", (unsigned long)(pet_depart_time / 1000), weight_after_pet);
+            WebSerial.printf("pet_depart_time: %lu, weight_after_pet: %.3f\n", (unsigned long)(pet_depart_time / 1000), weight_after_pet);
             pet_measured = true;
             pet_in_box = false;
         }
@@ -166,15 +168,15 @@ void PetWeight::process_recorded_weight(float current_weight) {
     }
 
     if( pet_measured == true && ( millis() - pet_arrival_time ) / 1000 >= pet_visit_bound_seconds) {
-        try {
+        // try {
             Serial.printf("record_pet_loop_count: %d\n", record_pet_loop_count);
             WebSerial.printf("record_pet_loop_count: %d\n", record_pet_loop_count);
             record_pet_loop_count++;
-            Serial.printf("Complete measurment: %d\n", ( millis() - pet_arrival_time ) / 1000);
-            WebSerial.printf("Complete measurment: %d\n", ( millis() - pet_arrival_time ) / 1000);
+            Serial.printf("Complete measurment: %lu\n", ( millis() - pet_arrival_time ) / 1000);
+            WebSerial.printf("Complete measurment: %lu\n", ( millis() - pet_arrival_time ) / 1000);
             pet_visit_seconds_total = ( pet_depart_time - pet_arrival_time ) / 1000;
-            Serial.printf("pet_visit_seconds_total: %d\n", pet_visit_seconds_total);
-            WebSerial.printf("pet_visit_seconds_total: %d\n", pet_visit_seconds_total);
+            Serial.printf("pet_visit_seconds_total: %lu\n", pet_visit_seconds_total);
+            WebSerial.printf("pet_visit_seconds_total: %lu\n", pet_visit_seconds_total);
             pet_final_weight = pet_weight_in_box - weight_after_pet;
             Serial.printf("pet_final_weight: %f\n", pet_final_weight);
             WebSerial.printf("pet_final_weight: %f\n", pet_final_weight);
@@ -194,10 +196,10 @@ void PetWeight::process_recorded_weight(float current_weight) {
                 pet_weight_in_box = 0;
             }
             pet_measured = false;
-        } catch (const std::exception& e) { 
-            // Catches any exception derived from std::exception
-            Serial.printf( "Standard Exception Caught: %s\n", e.what() );
-            WebSerial.printf( "Standard Exception Caught: %s\n", e.what() );
-        }
+        // } catch (const std::exception& e) { 
+        //     // Catches any exception derived from std::exception
+        //     Serial.printf( "Standard Exception Caught: %s\n", e.what() );
+        //     WebSerial.printf( "Standard Exception Caught: %s\n", e.what() );
+        // }
     }
 }

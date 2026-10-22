@@ -22,6 +22,13 @@
 #include <LoadSensorStabilizer.h>
 #include <PetWeight.h>
 
+#include "mqtt_client.h"
+
+#include <Secrets.h>
+
+#include <GelfLogger.h>
+
+
 #define calibration_factor 9940.0 //This value is obtained using the SparkFun_HX711_Calibration sketch
 
 #define DOUT  32
@@ -38,7 +45,7 @@ PetWeight pet_weight;
 unsigned long ota_progress_millis = 0;
 
 //SSID and Password of your WiFi router
-const char* ssid = "enginerdy-iot";
+const char* ssid = SSID;
 const char* password = "";
 String mac_address = "30:76:f5:e7:b7:e0";
 char* host_name;
@@ -49,7 +56,7 @@ HX711 scale;
 // The transport can be either UDP, TCP, HTTP, etc (right now UDP only is implemented)
 // It takes an IP address or a host name
 
-char* graylog_address= "blinking-graylog.pettingzoo.casa";
+char* graylog_address= GRAYLOG_ADDRESS;
 
 // UDPTransport transport = UDPTransport("log.mysite.net", 12201);
 UDPTransport transport = UDPTransport(graylog_address, 12201);
@@ -90,10 +97,10 @@ int log_to_gelf(const char* short_message) {
 
 
 char* get_host_name(){
-    String test_mac_string = String("30:76:f5:e7:b7:e0");
+    String test_mac_string = String("30:76:f5:e7:b2:c4");
     test_mac_string.toLowerCase();
     if( mac_address == test_mac_string) {
-        return (char*)"litter_scale_1";
+        return (char*)"small_litter_scale";
     }
 
     return (char*)"unknown";
@@ -232,6 +239,7 @@ void setup() {
 
     Serial.println("Start");
     WebSerial.println("Start");
+    GraylogLogger.println("Start");
 
     start_time = millis();
 }
@@ -249,6 +257,7 @@ void loop() {
     sample_counter++;
 
     if( sensor.isSteady() == true ) {
+        GraylogLogger.printf("Steady Weight: %.3f lbs", current_weight);
         pet_weight.process_recorded_weight(current_weight);
     }
 

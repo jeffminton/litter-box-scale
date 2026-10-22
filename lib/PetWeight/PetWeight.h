@@ -5,7 +5,11 @@
 #include <WebSerial.h>
 #include <time.h>                   // for time() ctime()
 
+#include <GelfLogger.h>
 
+// #include <UDPTransport.h>
+// #include <Message.h>
+// #include <Publisher.h>
 
 #define PET_WEIGHT_MAX_RECORDS 64
 #define PET_WEIGHTS_LENGTH 16
@@ -71,7 +75,7 @@ public:
     
     int update_weight(int index, float weight);
     
-    int get_pet_current_weight(int index);
+    float get_pet_current_weight(int index);
     
     int get_matching_pet_index(float weight);
     
