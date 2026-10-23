@@ -1,7 +1,12 @@
 #include "GelfLogger.h"
 
 
-GelfLogger::GelfLogger() :  graylog_address(const_cast<char*>(GRAYLOG_ADDRESS)), transport(UDPTransport(graylog_address, 12201)),  publisher(Publisher(&transport)), message(Message("")){
+GelfLogger::GelfLogger()
+    : graylog_address(const_cast<char*>(GRAYLOG_ADDRESS))
+    , transport(UDPTransport(graylog_address, 12201))
+    , publisher(Publisher(&transport))
+    , message(Message(""))
+{
     // graylog_address = GRAYLOG_ADDRESS;
 
     // transport = UDPTransport(graylog_address, 12201);

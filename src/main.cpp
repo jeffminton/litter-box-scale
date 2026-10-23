@@ -29,7 +29,10 @@
 #include <GelfLogger.h>
 
 
-#define calibration_factor 9940.0 //This value is obtained using the SparkFun_HX711_Calibration sketch
+// #define DEFAULT_CALIBRATION_FACTOR 9940.0 //This value is obtained using the SparkFun_HX711_Calibration sketch
+#define DEFAULT_CALIBRATION_FACTOR 10980.0 //This value is obtained using the SparkFun_HX711_Calibration sketch
+
+float calibration_factor = DEFAULT_CALIBRATION_FACTOR; //-7050 worked for my 440lb max scale setup
 
 #define DOUT  32
 #define CLK  33
@@ -58,10 +61,10 @@ HX711 scale;
 
 const char* graylog_address = GRAYLOG_ADDRESS;
 
-char* graylog_address_modified = const_cast<char*>(graylog_address);
+// char* graylog_address_modified = const_cast<char*>(graylog_address);
 
 // UDPTransport transport = UDPTransport("log.mysite.net", 12201);
-UDPTransport transport = UDPTransport(graylog_address_modified, 12201);
+UDPTransport transport = UDPTransport(const_cast<char*>(graylog_address), 12201);
 Publisher publisher = Publisher(&transport);
 
 // We will use this just to avoid creating many messages in our functions
@@ -88,7 +91,6 @@ int sample_counter = 0;
 LoadSensorStabilizer sensor(steady_weight_count_required, steady_weight_tolerance);
 
 
-
 int log_to_gelf(const char* short_message) {
     Serial.printf("log_to_gelf write Start\n");
     message.reset(short_message);
@@ -106,7 +108,7 @@ char* get_host_name(){
     String test_mac_string = String("30:76:f5:e7:b2:c4");
     test_mac_string.toLowerCase();
     if( mac_address == test_mac_string) {
-        return (char*)"small_litter_scale";
+        return (char*)"litter_scale_small";
     }
 
     return (char*)"unknown";
@@ -115,6 +117,7 @@ char* get_host_name(){
 void onOTAStart() {
   // Log when OTA has started
   Serial.println("OTA update started!");
+  GraylogLogger.println("OTA update started!");
   // <Add your own code here>
 }
 
@@ -123,6 +126,7 @@ void onOTAProgress(size_t current, size_t final) {
   if (millis() - ota_progress_millis > 1000) {
     ota_progress_millis = millis();
     Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
+    GraylogLogger.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
   }
 }
 
@@ -130,8 +134,10 @@ void onOTAEnd(bool success) {
   // Log when OTA has finished
   if (success) {
     Serial.println("OTA update finished successfully!");
+    GraylogLogger.println("OTA update finished successfully!");
   } else {
     Serial.println("There was an error during OTA update!");
+    GraylogLogger.println("There was an error during OTA update!");
   }
   // <Add your own code here>
 }
@@ -139,34 +145,32 @@ void onOTAEnd(bool success) {
 
 
 void setup() {
-    Serial.begin(57600);
-
+    Serial.begin(115200);
+    Serial.println("Serial Started");
     configTzTime(MY_TZ, MY_NTP_SERVER); // --> Here is the IMPORTANT ONE LINER needed in your sketch!
 
     // Initialize LittleFS
+    Serial.println("LittelFS Begin");
     if(!LittleFS.begin()){
         Serial.println("An Error has occurred while mounting LittleFS");
         return;
     }
+    Serial.println("Done LittelFS Begin");
 
     // prefs.begin("pet-scale"); // use "my-app" namespace
 
     // // prefs.remove("pet_weights");
 
-    // if (not prefs.isKey("pet_weights")) {
-    //     // pet_weights[0] = {"Kaylee", 12.5}; // one
-    //     prefs.putBytes("pet_weights", pet_weights, sizeof(pet_weights));
-    // }
+    Serial.println("Check Cal Factor Pref Exists");
+    if (not prefs.isKey("calibration_factor")) {
+        // pet_weights[0] = {"Kaylee", 12.5}; // one
+        prefs.putFloat("calibration_factor", DEFAULT_CALIBRATION_FACTOR);
+    }
+    Serial.println("Done Check Cal Factor Pref Exists");
 
-    // size_t pw_pref_len = prefs.getBytesLength("pet_weights");
-    // // simple check that data fits
-    // if (0 == pw_pref_len || pw_pref_len % sizeof(pet_weight_t) || pw_pref_len > sizeof(pet_weights)) {
-    //     Serial.printf("Invalid size of pet_weights array: %zu, should be %zu\n", pw_pref_len, sizeof(pet_weights));
-    //     prefs.putBytes("pet_weights", pet_weights, sizeof(pet_weights));
-    //     return;
-    // }
-    // prefs.getBytes("pet_weights", pet_weights, pw_pref_len);
-
+    Serial.println("Get Cal Factor Pref");
+    prefs.getFloat("calibration_factor", calibration_factor);
+    Serial.println("Done Get Cal Factor Pref");
 
     WiFiManager wm;
 
@@ -248,6 +252,7 @@ void setup() {
     Serial.println("Start");
     WebSerial.println("Start");
     GraylogLogger.println("Start");
+    GraylogLogger.println("Using Graylog Logger");
     log_to_gelf("Start Local Function");
 
     start_time = millis();
@@ -269,6 +274,47 @@ void loop() {
         // GraylogLogger.printf("Steady Weight: %.3f lbs", current_weight);
         pet_weight.process_recorded_weight(current_weight);
     }
+
+    #ifdef CALIBRATE
+    if( CALIBRATE == 1 ) {
+        scale.set_scale(calibration_factor); //Adjust to this calibration factor
+
+        Serial.print("Reading: ");
+        Serial.print(scale.get_units(), 3);
+        Serial.print(" lbs"); //Change this to kg and re-adjust the calibration factor if you follow SI units like a sane person
+        Serial.print(" calibration_factor: ");
+        Serial.print(calibration_factor);
+        Serial.println();
+
+        if(Serial.available())
+        {
+            char temp = Serial.read();
+            if(temp == '+' || temp == 'a')
+            calibration_factor += 10;
+            else if(temp == '-' || temp == 'z')
+            calibration_factor -= 10;
+            else if(temp == 's')
+            calibration_factor += 100;
+            else if(temp == 'x')
+            calibration_factor -= 100;
+            else if(temp == 'd')
+            calibration_factor += 1000;
+            else if(temp == 'c')
+            calibration_factor -= 1000;
+            else if(temp == 'f')
+            calibration_factor += 10000;
+            else if(temp == 'v')
+            calibration_factor -= 10000;
+            else if(temp == 'g')
+            calibration_factor += 100000;
+            else if(temp == 'b')
+            calibration_factor -= 100000;
+            else if(temp == 'p')
+            prefs.putFloat("calibration_factor", calibration_factor);
+        }
+        delay(500);
+    }
+    #endif
 
 }
 
