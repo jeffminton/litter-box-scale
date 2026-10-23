@@ -90,6 +90,7 @@ int sample_counter = 0;
 
 LoadSensorStabilizer sensor(steady_weight_count_required, steady_weight_tolerance);
 
+size_t pref_result;
 
 int log_to_gelf(const char* short_message) {
     Serial.printf("log_to_gelf write Start\n");
@@ -157,20 +158,21 @@ void setup() {
     }
     Serial.println("Done LittelFS Begin");
 
-    // prefs.begin("pet-scale"); // use "my-app" namespace
+    prefs.begin("pet-scale"); // use "my-app" namespace
 
     // // prefs.remove("pet_weights");
 
-    Serial.println("Check Cal Factor Pref Exists");
-    if (not prefs.isKey("calibration_factor")) {
+    Serial.printf("Check Cal Factor Pref Exists, %d\n", prefs.isKey("cal_factor"));
+    if( !prefs.isKey("cal_factor") ) {
         // pet_weights[0] = {"Kaylee", 12.5}; // one
-        prefs.putFloat("calibration_factor", DEFAULT_CALIBRATION_FACTOR);
+        Serial.println("Set Default Cal Factor Pref");
+        prefs.putFloat("cal_factor", DEFAULT_CALIBRATION_FACTOR);
     }
     Serial.println("Done Check Cal Factor Pref Exists");
 
     Serial.println("Get Cal Factor Pref");
-    prefs.getFloat("calibration_factor", calibration_factor);
-    Serial.println("Done Get Cal Factor Pref");
+    calibration_factor = prefs.getFloat("cal_factor");
+    Serial.printf("Done Get Cal Factor Pref: %f, size: %d\n", calibration_factor, pref_result);
 
     WiFiManager wm;
 
@@ -276,7 +278,7 @@ void loop() {
     }
 
     #ifdef CALIBRATE
-    if( CALIBRATE == 1 ) {
+    if( CALIBRATE == 1 ) {        
         scale.set_scale(calibration_factor); //Adjust to this calibration factor
 
         Serial.print("Reading: ");
@@ -289,28 +291,33 @@ void loop() {
         if(Serial.available())
         {
             char temp = Serial.read();
-            if(temp == '+' || temp == 'a')
-            calibration_factor += 10;
-            else if(temp == '-' || temp == 'z')
-            calibration_factor -= 10;
-            else if(temp == 's')
-            calibration_factor += 100;
-            else if(temp == 'x')
-            calibration_factor -= 100;
-            else if(temp == 'd')
-            calibration_factor += 1000;
-            else if(temp == 'c')
-            calibration_factor -= 1000;
-            else if(temp == 'f')
-            calibration_factor += 10000;
-            else if(temp == 'v')
-            calibration_factor -= 10000;
-            else if(temp == 'g')
-            calibration_factor += 100000;
-            else if(temp == 'b')
-            calibration_factor -= 100000;
-            else if(temp == 'p')
-            prefs.putFloat("calibration_factor", calibration_factor);
+            if(temp == '+' || temp == 'a') {
+                calibration_factor += 10;
+            } else if(temp == '-' || temp == 'z') {
+                calibration_factor -= 10;
+            } else if(temp == 's') {
+                calibration_factor += 100;
+            } else if(temp == 'x') {
+                calibration_factor -= 100;
+            } else if(temp == 'd') {
+                calibration_factor += 1000;
+            } else if(temp == 'c') {
+                calibration_factor -= 1000;
+            } else if(temp == 'f') {
+                calibration_factor += 10000;
+            } else if(temp == 'v') {
+                calibration_factor -= 10000;
+            } else if(temp == 'g') {
+                calibration_factor += 100000;
+            } else if(temp == 'b') {
+                calibration_factor -= 100000;
+            } else if(temp == 'p') {
+                pref_result = prefs.putFloat("cal_factor", calibration_factor);
+                Serial.printf("Set calibration factor size: %d\n", pref_result);
+                Serial.println("Get Cal Factor Pref");
+                calibration_factor = prefs.getFloat("cal_factor");
+                Serial.printf("Done Get Cal Factor Pref: %f, size: %d\n", calibration_factor, pref_result);
+            }
         }
         delay(500);
     }
