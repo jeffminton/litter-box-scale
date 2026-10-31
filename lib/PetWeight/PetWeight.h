@@ -4,8 +4,8 @@
 #include <Preferences.h>
 #include <WebSerial.h>
 #include <time.h>                   // for time() ctime()
-
-#include <GelfLogger.h>
+#include <Syslog.h>
+// #include <GelfLogger.h>
 
 // #include <UDPTransport.h>
 // #include <Message.h>
@@ -54,26 +54,34 @@ private:
 
     int last_printed_seconds = 0;
 
-    const int pet_visit_bound_seconds = 60;
+    int pet_visit_bound_seconds = 60;
 
     int record_pet_loop_count = 0;
 
     float pet_final_weight = 0;
 
-    const int min_visit_seconds = 30;
+    int min_visit_seconds = 30;
 
     int matching_pet_index = -1;
 
-    const float min_valid_pet_weight = 6.0;
+    float min_valid_pet_weight = 6.0;
 
     pet_weight_t pet_weights[PET_WEIGHTS_LENGTH]; // buffer for the data (max 16 entries)
 
+    int measure_timeout_seconds = 1200;
+
+    Syslog syslog;
+
 public:
-    PetWeight();
+    PetWeight(Syslog log);
 
     int get_pet_index(String pet_name);
     
     int update_weight(int index, float weight);
+
+    void read_preference_values();
+
+    void save_preference_values();
     
     float get_pet_current_weight(int index);
     

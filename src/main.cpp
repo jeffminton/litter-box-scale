@@ -2,12 +2,11 @@
 #include <WiFiUdp.h>
 #include <EEPROM.h>
 #include <time.h>                   // for time() ctime()
-#include <WebSerial.h>
 
 // Graylog
-#include <UDPTransport.h>
-#include <Message.h>
-#include <Publisher.h>
+// #include <UDPTransport.h>
+// #include <Message.h>
+// #include <Publisher.h>
 
 // Load Cell
 #include "HX711.h"
@@ -26,7 +25,15 @@
 
 #include <Secrets.h>
 
-#include <GelfLogger.h>
+// #include <GelfLogger.h>
+
+// #include <Logger.h>
+
+#include <ezButton.h>
+
+#include <ezLED.h> // ezLED library
+
+#include <Syslog.h>
 
 
 // #define DEFAULT_CALIBRATION_FACTOR 9940.0 //This value is obtained using the SparkFun_HX711_Calibration sketch
@@ -36,22 +43,41 @@ float calibration_factor = DEFAULT_CALIBRATION_FACTOR; //-7050 worked for my 440
 
 #define DOUT  32
 #define CLK  33
+#define GREEN_BTN 26
+#define YELLOW_BTN 27
+#define GREEN_LED 14
+#define RED_LED 12
 
 // const int pet_weights_length = 16;
 
 // pet_weight_t pet_weights[pet_weights_length]; // buffer for the data (max 16 entries)
 
+ezButton green_button(GREEN_BTN);
+ezButton yellow_button(YELLOW_BTN);
+
+ezLED green_led(GREEN_LED);
+ezLED red_led(RED_LED);
+
 Preferences prefs;
 
-PetWeight pet_weight;
+// A UDP instance to let us send and receive packets over UDP
+WiFiUDP udpClient;
+
+// Create a new empty syslog instance
+Syslog syslog(udpClient, SYSLOG_PROTO_BSD);
+
+PetWeight pet_weight(syslog);
 
 unsigned long ota_progress_millis = 0;
 
 //SSID and Password of your WiFi router
 const char* ssid = SSID;
 const char* password = "";
-String mac_address = "30:76:f5:e7:b7:e0";
+String mac_address; // = "30:76:f5:e7:b7:e0";
+IPAddress ip_address;
 char* host_name;
+
+// "Litter-Scale"
 
 HX711 scale;
 
@@ -61,14 +87,21 @@ HX711 scale;
 
 const char* graylog_address = GRAYLOG_ADDRESS;
 
+const char* SYSLOG_SERVER = GRAYLOG_ADDRESS;
+// #define SYSLOG_SERVER "syslog-server"
+const int SYSLOG_PORT = 5140;
+// #define SYSLOG_PORT 514
+
+
+
 // char* graylog_address_modified = const_cast<char*>(graylog_address);
 
 // UDPTransport transport = UDPTransport("log.mysite.net", 12201);
-UDPTransport transport = UDPTransport(const_cast<char*>(graylog_address), 12201);
-Publisher publisher = Publisher(&transport);
+// UDPTransport transport = UDPTransport(const_cast<char*>(graylog_address), 12201);
+// Publisher publisher = Publisher(&transport);
 
-// We will use this just to avoid creating many messages in our functions
-Message message = Message("");
+// // We will use this just to avoid creating many messages in our functions
+// Message message = Message("");
 
 AsyncWebServer server(80);
 
@@ -92,24 +125,36 @@ LoadSensorStabilizer sensor(steady_weight_count_required, steady_weight_toleranc
 
 size_t pref_result;
 
-int log_to_gelf(const char* short_message) {
-    Serial.printf("log_to_gelf write Start\n");
-    message.reset(short_message);
-    message.set("host", host_name);
-    message.set("millis", millis());
-    Serial.printf("log_to_gelf write Before Publish host_name: %s, message: %s\n", host_name, short_message);
-    publisher.publish(&message);
-    Serial.printf("log_to_gelf write After Publish\n");
-    Serial.printf("log_to_gelf write Done\n");
-    return 0;
-}
+int green_button_last_state = HIGH;
+int yellow_button_last_state = HIGH;
+
+
+
+
+// int log_to_gelf(const char* short_message) {
+//     Serial.printf("log_to_gelf write Start\n");
+//     message.reset(short_message);
+//     message.set("host", host_name);
+//     message.set("millis", millis());
+//     Serial.printf("log_to_gelf write Before Publish host_name: %s, message: %s\n", host_name, short_message);
+//     publisher.publish(&message);
+//     Serial.printf("log_to_gelf write After Publish\n");
+//     Serial.printf("log_to_gelf write Done\n");
+//     return 0;
+// }
 
 
 char* get_host_name(){
-    String test_mac_string = String("30:76:f5:e7:b2:c4");
+    String test_mac_string = String(LITTER_SCALE_SMALL_MAC);
     test_mac_string.toLowerCase();
     if( mac_address == test_mac_string) {
         return (char*)"litter_scale_small";
+    }
+
+    test_mac_string = String(LITTER_SCALE_LARGE_MAC);
+    test_mac_string.toLowerCase();
+    if( mac_address == test_mac_string) {
+        return (char*)"litter_scale_large";
     }
 
     return (char*)"unknown";
@@ -118,7 +163,7 @@ char* get_host_name(){
 void onOTAStart() {
   // Log when OTA has started
   Serial.println("OTA update started!");
-  GraylogLogger.println("OTA update started!");
+  syslog.log(LOG_INFO, "OTA update started!\n");
   // <Add your own code here>
 }
 
@@ -127,7 +172,7 @@ void onOTAProgress(size_t current, size_t final) {
   if (millis() - ota_progress_millis > 1000) {
     ota_progress_millis = millis();
     Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
-    GraylogLogger.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
+    syslog.logf(LOG_INFO, "OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
   }
 }
 
@@ -135,10 +180,10 @@ void onOTAEnd(bool success) {
   // Log when OTA has finished
   if (success) {
     Serial.println("OTA update finished successfully!");
-    GraylogLogger.println("OTA update finished successfully!");
+    syslog.log(LOG_NOTICE, "OTA update finished successfully!\n");
   } else {
     Serial.println("There was an error during OTA update!");
-    GraylogLogger.println("There was an error during OTA update!");
+    syslog.log(LOG_ERR, "There was an error during OTA update!\n");
   }
   // <Add your own code here>
 }
@@ -158,6 +203,18 @@ void setup() {
     }
     Serial.println("Done LittelFS Begin");
 
+    // pinMode(GREEN_BTN, INPUT_PULLUP);
+    // pinMode(YELLOW_BTN, INPUT_PULLUP);
+
+    green_button.setDebounceTime(2);
+    green_button.setCountMode(COUNT_FALLING);
+    yellow_button.setDebounceTime(2);
+    yellow_button.setCountMode(COUNT_FALLING);
+
+    green_led.blinkNumberOfTimes(500, 500, 4);
+    red_led.blinkNumberOfTimes(500, 500, 3, 500);
+
+    
     prefs.begin("pet-scale"); // use "my-app" namespace
 
     // // prefs.remove("pet_weights");
@@ -190,6 +247,20 @@ void setup() {
     // res = wm.autoConnect("AutoConnectAP"); // anonymous ap
     res = wm.autoConnect("Litter-Scale"); // password protected ap
 
+    wm.setHostname(host_name);
+
+    mac_address = WiFi.macAddress();
+    ip_address = WiFi.localIP();
+    mac_address.toLowerCase();
+    Serial.printf("MAC Address: %s\n", mac_address.c_str());
+    Serial.printf("IP Address: %s\n", ip_address.toString());
+
+    host_name = get_host_name();
+
+    Serial.printf("Host Name: %s\n", host_name);
+
+    // GraylogLogger.set_hostname(host_name);
+
     if(!res) {
         Serial.println("Failed to connect");
         // ESP.restart();
@@ -200,9 +271,11 @@ void setup() {
     }
 
 
-    mac_address = WiFi.macAddress();
-    mac_address.toLowerCase();
-    Serial.println(mac_address);
+    syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
+    syslog.deviceHostname(host_name);
+    syslog.appName("Litter-Scale");
+    syslog.defaultPriority(LOG_KERN);
+    syslog.logMask(LOG_UPTO(LOG_INFO));
 
     // 1. SERVE REACT FRONTEND STATIC FILES
     // Serves index.html when a user types the ESP32's IP address
@@ -213,15 +286,15 @@ void setup() {
         JsonDocument doc;
         doc["temperature"] = 24.5; // Example sensor data
         doc["heap"] = ESP.getFreeHeap();
+        Serial.printf("head: %u\n", doc["heap"]);
         
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
     });
 
-    host_name = get_host_name();
+   
 
-    GraylogLogger.set_hostname(host_name);
 
     scale.begin(DOUT, CLK);
     scale.set_scale(calibration_factor); //This value is obtained by using the SparkFun_HX711_Calibration sketch
@@ -233,48 +306,71 @@ void setup() {
     ElegantOTA.onProgress(onOTAProgress);
     ElegantOTA.onEnd(onOTAEnd);
 
-    // WebSerial is accessible at "<IP Address>/webserial" in browser
-    WebSerial.begin(&server);
-
-    /* Attach Message Callback */
-    WebSerial.onMessage([&](uint8_t *data, size_t len) {
-        Serial.printf("Received %u bytes from WebSerial: ", len);
-        Serial.write(data, len);
-        Serial.println();
-        WebSerial.println("Received Data...");
-        String d = "";
-        for(size_t i=0; i < len; i++){
-            d += char(data[i]);
-        }
-        WebSerial.println(d);
-    });
-
     server.begin();
 
-    Serial.println("Start");
-    WebSerial.println("Start");
-    GraylogLogger.println("Start");
-    GraylogLogger.println("Using Graylog Logger");
-    log_to_gelf("Start Local Function");
+    syslog.log(LOG_NOTICE, "Start\n");
 
     start_time = millis();
 }
 
 void loop() {
     // ArduinoOTA.handle();
+    syslog.logf(LOG_DEBUG, "ElegantOTA.loop\n");
     ElegantOTA.loop();
     yield();
+    // syslog.logf(LOG_DEBUG, "green_button.loop\n");
+    green_button.loop();
+    yield();
+    // syslog.logf(LOG_DEBUG, "yellow_button.loop\n");
+    yellow_button.loop();
+    yield();
 
+    green_led.loop();
+    red_led.loop();
+    yield();
+
+    if(green_led.getState() == LED_IDLE) {
+        green_led.turnON();
+    }
+
+    // syslog.logf(LOG_DEBUG, "time\n");
     time(&now);                       // read the current time
     localtime_r(&now, &tm);
 
+    // syslog.logf(LOG_DEBUG, "scale\n");
     current_weight = scale.get_units();
     sensor.addReading(current_weight);
     sample_counter++;
 
+    // syslog.logf(LOG_DEBUG, "steady\n");
     if( sensor.isSteady() == true ) {
-        // GraylogLogger.printf("Steady Weight: %.3f lbs", current_weight);
+        // syslog.logf(LOG_DEBUG, "Steady Weight: %.3f lbs", current_weight);
+        // syslog.logf(LOG_DEBUG, "process\n");
         pet_weight.process_recorded_weight(current_weight);
+    }
+
+    if( green_button.isPressed() ){
+        syslog.logf(LOG_INFO, "Green Button Pressed %lu\n", green_button.heldDuration());
+        syslog.logf(LOG_INFO, "Green Button duration %lu\n", green_button.getDuration());
+    }
+
+    // syslog.logf(LOG_DEBUG, "Green Button Pressed %s Held Duration %lu\n", green_button.isPressed() == true ? "true" : "false", green_button.heldDuration());
+    // syslog.logf(LOG_DEBUG, "Green Button duration %lu\n", green_button.getDuration());
+    
+    // syslog.logf(LOG_DEBUG, "held button check\n");
+    if( green_button.isReleased() && green_button.getDuration() > 3000 ) {
+        syslog.logf(LOG_INFO, "Green Button Held\n");
+        scale.tare();
+
+        green_led.blinkNumberOfTimes(250, 250, 4);
+
+        green_button.resetDuration();
+    }
+
+    if( yellow_button.isMultipressComplete() && yellow_button.getCount() > 0 ) {
+        syslog.logf(LOG_INFO, "Press Count: %d", yellow_button.getCount());
+
+        yellow_button.resetMultipress();
     }
 
     #ifdef CALIBRATE
