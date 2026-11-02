@@ -1,7 +1,7 @@
 #include "PetWeight.h"
 
 
-PetWeight::PetWeight( Syslog log ):
+PetWeight::PetWeight( Syslog& log ):
     pet_weights_length(PET_WEIGHTS_LENGTH),
     syslog(log)
 {
@@ -189,20 +189,23 @@ void PetWeight::process_recorded_weight(float current_weight) {
             pet_weight_in_box = current_weight;
             pet_arrival_time = millis();
             syslog.logf(LOG_NOTICE, "pet_arrival_time: %lu, pet_weight_in_box: %.3f\n", pet_arrival_time / 1000, pet_weight_in_box);
-            pet_in_box = true;
+            scale_state = ScaleState::pet_in_box;
+            // pet_in_box = true;
         } else {
             weight_after_pet = current_weight;
             pet_depart_time = millis();
             syslog.logf(LOG_NOTICE, "pet_depart_time: %lu, weight_after_pet: %.3f\n", (unsigned long)(pet_depart_time / 1000), weight_after_pet);
-            pet_measured = true;
-            pet_in_box = false;
+            scale_state = ScaleState::pet_measured;
+            // pet_measured = true;
+            // pet_in_box = false;
         }
         
     }
     sample_counter = 0;
 
     elapsed_seconds = ( ( millis() - pet_arrival_time ) / 1000 );
-    if( elapsed_seconds % 10 == 0 && elapsed_seconds != last_printed_seconds && (pet_measured == true || pet_in_box == true) ) {
+    if( elapsed_seconds % 10 == 0 && elapsed_seconds != last_printed_seconds && 
+        (scale_state == ScaleState::pet_measured || scale_state == ScaleState::pet_in_box) ) {
 
         syslog.logf(LOG_INFO, "Since arival seconds: %d\n", elapsed_seconds);
         last_printed_seconds = elapsed_seconds;
@@ -210,7 +213,7 @@ void PetWeight::process_recorded_weight(float current_weight) {
 
 
 
-    if( pet_measured == true && ( millis() - pet_arrival_time ) / 1000 >= pet_visit_bound_seconds) {
+    if( scale_state == ScaleState::pet_measured && ( millis() - pet_arrival_time ) / 1000 >= pet_visit_bound_seconds) {
         // try {
             syslog.logf(LOG_DEBUG, "record_pet_loop_count: %d\n", record_pet_loop_count);
             record_pet_loop_count++;
@@ -230,9 +233,24 @@ void PetWeight::process_recorded_weight(float current_weight) {
             } else {
                 pet_weight_in_box = 0;
             }
-            pet_measured = false;
+            // pet_measured = false;
+            scale_state = ScaleState::waiting_for_pet;
         // } catch (const std::exception& e) { 
         //     // Catches any exception derived from std::exception
         // }
+    }
+}
+
+PetWeight::ScaleState PetWeight::get_state() {
+    return scale_state;
+}
+
+
+char* PetWeight::get_state_str() {
+    switch (scale_state) {
+        case ScaleState::pet_in_box:        return "Pet In Box";
+        case ScaleState::pet_measured:      return "Pet Measured";
+        case ScaleState::waiting_for_pet:   return "Waiting For Pet";
+        default:                            return "Unknown";
     }
 }

@@ -23,7 +23,42 @@ typedef struct {
 
 
 class PetWeight {
+
+public:
+    
+    enum class ScaleState {
+        waiting_for_pet,
+        pet_in_box,
+        pet_measured
+    };
+    
+    PetWeight(Syslog& log);
+
+    int get_pet_index(String pet_name);
+    
+    int update_weight(int index, float weight);
+
+    void read_preference_values();
+
+    void save_preference_values();
+    
+    float get_pet_current_weight(int index);
+    
+    int get_matching_pet_index(float weight);
+    
+    void log_all_pet_weights_string();
+
+    void process_recorded_weight(float current_weight);
+
+    ScaleState get_state();
+
+    char* get_state_str();
+    
 private:
+    
+
+    ScaleState scale_state = ScaleState::waiting_for_pet;
+
     const int pet_weights_length;
 
     time_t now;                         // this are the seconds since Epoch (1970) - UTC
@@ -70,26 +105,9 @@ private:
 
     int measure_timeout_seconds = 1200;
 
-    Syslog syslog;
+    Syslog& syslog;
 
-public:
-    PetWeight(Syslog log);
 
-    int get_pet_index(String pet_name);
-    
-    int update_weight(int index, float weight);
-
-    void read_preference_values();
-
-    void save_preference_values();
-    
-    float get_pet_current_weight(int index);
-    
-    int get_matching_pet_index(float weight);
-    
-    void log_all_pet_weights_string();
-
-    void process_recorded_weight(float current_weight);
 };
 
 #endif // LOAD_SENSOR_STABILIZER_H

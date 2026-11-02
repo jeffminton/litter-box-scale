@@ -129,7 +129,7 @@ int green_button_last_state = HIGH;
 int yellow_button_last_state = HIGH;
 
 
-
+PetWeight::ScaleState scale_state, scale_state_new;
 
 // int log_to_gelf(const char* short_message) {
 //     Serial.printf("log_to_gelf write Start\n");
@@ -247,7 +247,7 @@ void setup() {
     // res = wm.autoConnect("AutoConnectAP"); // anonymous ap
     res = wm.autoConnect("Litter-Scale"); // password protected ap
 
-    wm.setHostname(host_name);
+    
 
     mac_address = WiFi.macAddress();
     ip_address = WiFi.localIP();
@@ -256,6 +256,8 @@ void setup() {
     Serial.printf("IP Address: %s\n", ip_address.toString());
 
     host_name = get_host_name();
+
+    wm.setHostname(host_name);
 
     Serial.printf("Host Name: %s\n", host_name);
 
@@ -276,6 +278,8 @@ void setup() {
     syslog.appName("Litter-Scale");
     syslog.defaultPriority(LOG_KERN);
     syslog.logMask(LOG_UPTO(LOG_INFO));
+
+    
 
     // 1. SERVE REACT FRONTEND STATIC FILES
     // Serves index.html when a user types the ESP32's IP address
@@ -309,6 +313,8 @@ void setup() {
     server.begin();
 
     syslog.log(LOG_NOTICE, "Start\n");
+
+    syslog.logf(LOG_NOTICE, "Scale State %s\n", pet_weight.get_state_str());
 
     start_time = millis();
 }
@@ -371,6 +377,17 @@ void loop() {
         syslog.logf(LOG_INFO, "Press Count: %d", yellow_button.getCount());
 
         yellow_button.resetMultipress();
+    }
+
+    scale_state_new = pet_weight.get_state();
+
+    if( scale_state != scale_state_new) {
+        syslog.logf(LOG_NOTICE, "Scale State %s\n", pet_weight.get_state_str());
+        scale_state = scale_state_new;
+
+        if( scale_state == PetWeight::ScaleState::pet_in_box ) {
+            red_led.breathe(0, 255, 2000);
+        }
     }
 
     #ifdef CALIBRATE
